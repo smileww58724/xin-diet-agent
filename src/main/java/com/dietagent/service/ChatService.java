@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -85,6 +86,9 @@ public class ChatService {
         StopHandle handle = new StopHandle();
         stopHandles.put(userId, handle);
         long startNanos = System.nanoTime();
+        // DeepSeek 每个分片都携带累计 usage：只保留末次响应，流结束时统一记录一次，
+        // 否则一次对话会写 N 条重复用量记录
+        AtomicReference<ChatResponse> lastResponse = new AtomicReference<>();
 
         // 直接返回 AI 流上的组合 Flux：客户端断开时取消信号沿链路传播，
         // 上游 DeepSeek 调用立即终止（手动 subscribe + sink 桥接的写法做不到这一点）
@@ -95,7 +99,7 @@ public class ChatService {
                 .tools(new DietAgentTools(userId, userService, dietRecordService, nutritionAnalysisService))
                 .stream()
                 .chatResponse()
-                .doOnNext(resp -> recordUsage(userId, resp, elapsedMs(startNanos)))
+                .doOnNext(lastResponse::set)
                 .map(ChatService::extractText)
                 .filter(text -> !text.isEmpty())
                 // 收到停止信号立即取消上游 AI 调用并正常收尾，不再等模型把剩余内容生成完
@@ -108,6 +112,7 @@ public class ChatService {
                         // 客户端直接断开（如关闭页面）：已生成的部分仍写入记忆，保持上下文连续
                         chatMemoryStore.append(userId, "assistant", fullResponse.toString());
                     }
+                    recordUsage(userId, lastResponse.get(), elapsedMs(startNanos));
                     // 两参 remove：仅当仍是本次请求的句柄时才清理，避免误删新一轮会话的句柄
                     stopHandles.remove(userId, handle);
                 });
