@@ -42,7 +42,7 @@ public class PexelsService {
         try {
             String encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8.toString());
             String url = API_URL + "?query=" + encodedQuery + "&per_page=" + perPage;
-            log.info("Pexels API URL: {}", url);
+            log.debug("Pexels API URL: {}", url);
 
             ResponseEntity<String> response = restTemplate.exchange(
                     url,
@@ -51,8 +51,10 @@ public class PexelsService {
                     String.class
             );
 
-            log.info("Pexels API Response: {}", response.getBody());
-            return parseResponse(response.getBody());
+            List<PexelsImage> images = parseResponse(response.getBody());
+            // 只记数量不落响应体全文：Pexels 响应含全部图片 URL，全量打日志既刷屏又泄露配置上下文
+            log.info("Pexels 搜索 '{}' 返回 {} 张图片", query, images.size());
+            return images;
         } catch (Exception e) {
             log.error("Pexels API 调用失败: {}", e.getMessage());
             return Collections.emptyList();
