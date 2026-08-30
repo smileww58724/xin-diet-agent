@@ -1,31 +1,57 @@
 <template>
-  <div class="goals-container">
-    <el-page-header @back="$router.back()" content="目标设定" />
+  <div class="goals-page">
+    <div class="page-head">
+      <div>
+        <h1>目标设定</h1>
+        <div class="page-sub">设定后 AI 建议与营养分析会以此为准</div>
+      </div>
+    </div>
 
-    <el-card class="mt">
-      <template #header>每日目标</template>
-      <el-form :model="form" label-width="100px">
-        <el-form-item label="每日卡路里">
-          <el-input-number v-model="form.dailyCalorieGoal" :min="0" :step="100" />
-          <span class="ml">kcal</span>
-        </el-form-item>
-        <el-form-item label="蛋白质目标">
-          <el-input-number v-model="form.proteinGoal" :min="0" :step="5" />
-          <span class="ml">g</span>
-        </el-form-item>
-        <el-form-item label="脂肪目标">
-          <el-input-number v-model="form.fatGoal" :min="0" :step="5" />
-          <span class="ml">g</span>
-        </el-form-item>
-        <el-form-item label="碳水目标">
-          <el-input-number v-model="form.carbGoal" :min="0" :step="10" />
-          <span class="ml">g</span>
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="handleSave" :loading="loading">保存目标</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
+    <div class="goals-grid">
+      <div class="goal-card">
+        <div class="card-title">每日营养目标</div>
+        <el-form :model="form" label-position="top" class="goal-form">
+          <div class="goal-row">
+            <div class="goal-item">
+              <span class="goal-label">热量</span>
+              <el-input-number v-model="form.dailyCalorieGoal" :min="0" :step="100" controls-position="right" style="width: 100%" />
+              <span class="goal-unit">kcal / 天</span>
+            </div>
+            <div class="goal-item">
+              <span class="goal-label">蛋白质</span>
+              <el-input-number v-model="form.proteinGoal" :min="0" :step="5" controls-position="right" style="width: 100%" />
+              <span class="goal-unit">g / 天</span>
+            </div>
+          </div>
+          <div class="goal-row">
+            <div class="goal-item">
+              <span class="goal-label">脂肪</span>
+              <el-input-number v-model="form.fatGoal" :min="0" :step="5" controls-position="right" style="width: 100%" />
+              <span class="goal-unit">g / 天</span>
+            </div>
+            <div class="goal-item">
+              <span class="goal-label">碳水</span>
+              <el-input-number v-model="form.carbGoal" :min="0" :step="10" controls-position="right" style="width: 100%" />
+              <span class="goal-unit">g / 天</span>
+            </div>
+          </div>
+          <el-button type="primary" style="width: 100%; margin-top: 8px" @click="handleSave" :loading="loading">
+            保存目标
+          </el-button>
+        </el-form>
+      </div>
+
+      <div class="goal-aside">
+        <div class="card-title">参考值</div>
+        <p class="aside-text">不确定设多少？一般成年人可参考：</p>
+        <ul class="aside-list">
+          <li><b>2000 kcal</b> 每日热量（轻体力活动）</li>
+          <li><b>60 g</b> 蛋白质，<b>65 g</b> 脂肪，<b>300 g</b> 碳水</li>
+          <li>减脂建议热量下调 10–20%，蛋白质上调</li>
+        </ul>
+        <p class="aside-note">保存后立即生效，AI 对话与营养分析都会按最新目标计算。</p>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -68,13 +94,77 @@ const handleSave = async () => {
 </script>
 
 <style scoped>
-.goals-container {
-  padding: 20px;
+.goals-page {
+  max-width: 780px;
+  margin: 0 auto;
 }
-.mt {
-  margin-top: 20px;
+.goals-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 16px;
+  align-items: start;
 }
-.ml {
-  margin-left: 10px;
+@media (max-width: 720px) {
+  .goals-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.goal-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 22px;
+}
+.card-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 18px;
+}
+.goal-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.goal-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.goal-label {
+  font-size: 13px;
+  color: var(--text-2);
+  font-weight: 500;
+}
+.goal-unit {
+  font-size: 11px;
+  color: var(--text-3);
+}
+.goal-aside {
+  background: var(--panel-soft);
+  border-radius: var(--radius-lg);
+  padding: 22px;
+}
+.aside-text {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.aside-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 2;
+}
+.aside-list b {
+  color: var(--ink);
+}
+.aside-note {
+  margin: 14px 0 0;
+  font-size: 12px;
+  color: var(--text-3);
+  line-height: 1.7;
 }
 </style>

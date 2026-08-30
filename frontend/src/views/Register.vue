@@ -1,25 +1,30 @@
 <template>
-  <div class="login-container">
-    <el-card class="login-card">
-      <h2>饮食管理智能体 - 注册</h2>
+  <div class="auth-page">
+    <div class="auth-card">
+      <div class="brand">
+        <span class="brand-logo">🥗</span>
+        <span class="brand-name">轻食 AI</span>
+      </div>
+      <h1 class="auth-title">创建账号</h1>
+      <p class="auth-sub">一分钟开始你的 AI 饮食管理</p>
+
       <el-form :model="form" :rules="rules" ref="formRef">
         <el-form-item prop="username">
-          <el-input v-model="form.username" placeholder="用户名" prefix-icon="User" />
+          <el-input v-model="form.username" placeholder="用户名" size="large" prefix-icon="User" />
         </el-form-item>
         <el-form-item prop="password">
-          <el-input v-model="form.password" type="password" placeholder="密码" prefix-icon="Lock" />
+          <el-input v-model="form.password" type="password" placeholder="密码（至少 6 位）" size="large" prefix-icon="Lock" show-password />
         </el-form-item>
         <el-form-item prop="nickname">
-          <el-input v-model="form.nickname" placeholder="昵称（可选）" prefix-icon="UserFilled" />
+          <el-input v-model="form.nickname" placeholder="昵称（可选）" size="large" prefix-icon="UserFilled" />
         </el-form-item>
-        <el-form-item>
-          <el-button type="primary" style="width: 100%" @click="handleRegister" :loading="loading">注册</el-button>
-        </el-form-item>
+        <el-button type="primary" class="auth-btn" size="large" @click="handleRegister" :loading="loading">注册</el-button>
       </el-form>
-      <div class="footer">
+
+      <div class="auth-footer">
         已有账号？<router-link to="/login">立即登录</router-link>
       </div>
-    </el-card>
+    </div>
   </div>
 </template>
 
@@ -71,24 +76,67 @@ const handleRegister = async () => {
 </script>
 
 <style scoped>
-.login-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
+.auth-page {
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  padding: 24px;
 }
-.login-card {
+.auth-card {
   width: 400px;
-  padding: 20px;
+  max-width: 100%;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 36px 32px 28px;
 }
-h2 {
-  text-align: center;
-  margin-bottom: 30px;
-  color: #333;
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 28px;
 }
-.footer {
-  text-align: center;
+.brand-logo {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  background: var(--ink);
+  border-radius: 10px;
+  font-size: 16px;
+}
+.brand-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.auth-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: -0.3px;
+}
+.auth-sub {
+  margin: 6px 0 26px;
+  font-size: 13px;
+  color: var(--text-3);
+}
+.auth-btn {
+  width: 100%;
+  margin-top: 6px;
+}
+.auth-footer {
   margin-top: 20px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-3);
+}
+.auth-footer a {
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: none;
 }
 </style>

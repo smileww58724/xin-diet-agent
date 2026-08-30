@@ -1,35 +1,38 @@
 <template>
-  <div class="diet-container">
-    <el-page-header @back="$router.back()" content="饮食记录">
-      <template #extra>
+  <div class="diet-page">
+    <div class="page-head">
+      <div>
+        <h1>饮食记录</h1>
+        <div class="page-sub">记录每一餐，AI 实时帮你分析</div>
+      </div>
+      <div class="head-actions">
+        <el-date-picker
+          v-model="selectedDate"
+          type="date"
+          placeholder="选择日期"
+          format="YYYY-MM-DD"
+          value-format="YYYY-MM-DD"
+          @change="loadRecords"
+          :clearable="false"
+          style="width: 140px"
+        />
         <el-button type="primary" @click="showAddDialog = true">添加记录</el-button>
-      </template>
-    </el-page-header>
-
-    <div class="date-picker">
-      <el-date-picker
-        v-model="selectedDate"
-        type="date"
-        placeholder="选择日期"
-        format="YYYY-MM-DD"
-        value-format="YYYY-MM-DD"
-        @change="loadRecords"
-      />
+      </div>
     </div>
 
-    <el-card v-if="records.length > 0">
+    <div v-if="records.length > 0" class="table-card">
       <el-table :data="records" stripe>
-        <el-table-column prop="mealType" label="餐次" width="100">
+        <el-table-column prop="mealType" label="餐次" width="110">
           <template #default="{ row }">
-            <el-tag>{{ mealTypeMap[row.mealType] }}</el-tag>
+            <el-tag>{{ mealLabel(row.mealType) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="foodName" label="食物名称" />
-        <el-table-column prop="portionSize" label="份量" width="120" />
-        <el-table-column prop="calories" label="卡路里" width="100">
+        <el-table-column prop="foodName" label="食物名称" min-width="140" />
+        <el-table-column prop="portionSize" label="份量" width="110" />
+        <el-table-column prop="calories" label="热量" width="100" sortable>
           <template #default="{ row }">{{ row.calories }} kcal</template>
         </el-table-column>
-        <el-table-column prop="protein" label="蛋白质" width="80">
+        <el-table-column prop="protein" label="蛋白质" width="90">
           <template #default="{ row }">{{ row.protein }}g</template>
         </el-table-column>
         <el-table-column prop="fat" label="脂肪" width="80">
@@ -38,20 +41,24 @@
         <el-table-column prop="carbohydrate" label="碳水" width="80">
           <template #default="{ row }">{{ row.carbohydrate }}g</template>
         </el-table-column>
-        <el-table-column label="操作" width="120">
+        <el-table-column label="" width="70" align="right">
           <template #default="{ row }">
             <el-button type="danger" size="small" link @click="handleDelete(row.id)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
-    </el-card>
+    </div>
 
-    <el-empty v-else description="暂无记录" />
+    <div v-else class="empty-state">
+      <h3>{{ mealDateLabel }}还没有记录</h3>
+      <p>手动添加，或在 AI 对话里直接说"我吃了什么"帮你记录</p>
+      <el-button type="primary" @click="showAddDialog = true">添加第一条记录</el-button>
+    </div>
 
-    <el-dialog v-model="showAddDialog" title="添加饮食记录" width="500px">
+    <el-dialog v-model="showAddDialog" title="添加饮食记录" width="520px">
       <el-form :model="form" label-width="80px">
         <el-form-item label="餐次">
-          <el-select v-model="form.mealType" placeholder="请选择">
+          <el-select v-model="form.mealType" placeholder="请选择" style="width: 100%">
             <el-option label="早餐" value="breakfast" />
             <el-option label="午餐" value="lunch" />
             <el-option label="晚餐" value="dinner" />
@@ -83,6 +90,7 @@
             placeholder="选择时间"
             format="YYYY-MM-DD HH:mm"
             value-format="YYYY-MM-DDTHH:mm:ss"
+            style="width: 100%"
           />
         </el-form-item>
       </el-form>
@@ -95,7 +103,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { dietAPI } from '../api'
 import { ElMessage } from 'element-plus'
 
@@ -105,10 +113,22 @@ const mealTypeMap = {
   dinner: '晚餐',
   snack: '加餐',
 }
+// AI 记录的餐次是中文（午餐/加餐），映射表只认英文 key，兜底直接显示原值
+const mealLabel = (type) => mealTypeMap[type] || type
 
-const selectedDate = ref(new Date().toISOString().split('T')[0])
+// 本地日期/时间（toISOString 是 UTC，会造成默认日期与用餐时间偏移 8 小时）
+const localDateStr = (d = new Date()) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+const localDateTimeStr = (d = new Date()) =>
+  `${localDateStr(d)}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:00`
+
+const selectedDate = ref(localDateStr())
 const records = ref([])
 const showAddDialog = ref(false)
+
+const mealDateLabel = computed(() =>
+  selectedDate.value === localDateStr() ? '今天' : selectedDate.value
+)
 
 const form = reactive({
   mealType: 'breakfast',
@@ -118,7 +138,7 @@ const form = reactive({
   protein: 0,
   fat: 0,
   carbohydrate: 0,
-  mealTime: new Date().toISOString().slice(0, 19),
+  mealTime: localDateTimeStr(),
 })
 
 onMounted(() => {
@@ -160,10 +180,19 @@ const handleDelete = async (id) => {
 </script>
 
 <style scoped>
-.diet-container {
-  padding: 20px;
+.diet-page {
+  max-width: 960px;
+  margin: 0 auto;
 }
-.date-picker {
-  margin: 20px 0;
+.head-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.table-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 6px;
 }
 </style>

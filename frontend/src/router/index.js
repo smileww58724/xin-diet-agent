@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import Login from '../views/Login.vue'
 import Register from '../views/Register.vue'
+import AppShell from '../layouts/AppShell.vue'
 import Chat from '../views/Chat.vue'
 import DietRecords from '../views/DietRecords.vue'
 import Analysis from '../views/Analysis.vue'
@@ -10,11 +11,17 @@ import Profile from '../views/Profile.vue'
 const routes = [
   { path: '/login', name: 'Login', component: Login },
   { path: '/register', name: 'Register', component: Register },
-  { path: '/', name: 'Chat', component: Chat },
-  { path: '/diet', name: 'DietRecords', component: DietRecords },
-  { path: '/analysis', name: 'Analysis', component: Analysis },
-  { path: '/goals', name: 'Goals', component: Goals },
-  { path: '/profile', name: 'Profile', component: Profile },
+  {
+    path: '/',
+    component: AppShell,
+    children: [
+      { path: '', name: 'Chat', component: Chat, meta: { flush: true } },
+      { path: 'diet', name: 'DietRecords', component: DietRecords },
+      { path: 'analysis', name: 'Analysis', component: Analysis },
+      { path: 'goals', name: 'Goals', component: Goals },
+      { path: 'profile', name: 'Profile', component: Profile },
+    ],
+  },
 ]
 
 const router = createRouter({
