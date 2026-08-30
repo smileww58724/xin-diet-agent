@@ -7,6 +7,7 @@ import DietRecords from '../views/DietRecords.vue'
 import Analysis from '../views/Analysis.vue'
 import Goals from '../views/Goals.vue'
 import Profile from '../views/Profile.vue'
+import Favorites from '../views/Favorites.vue'
 
 const routes = [
   { path: '/login', name: 'Login', component: Login },
@@ -19,6 +20,7 @@ const routes = [
       { path: 'diet', name: 'DietRecords', component: DietRecords },
       { path: 'analysis', name: 'Analysis', component: Analysis },
       { path: 'goals', name: 'Goals', component: Goals },
+      { path: 'favorites', name: 'Favorites', component: Favorites },
       { path: 'profile', name: 'Profile', component: Profile },
     ],
   },

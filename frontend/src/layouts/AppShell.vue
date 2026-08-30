@@ -52,7 +52,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ChatDotRound, Food, DataAnalysis, Aim, Setting } from '@element-plus/icons-vue'
+import { ChatDotRound, Food, DataAnalysis, Aim, Star, Setting } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -67,6 +67,7 @@ const nav = [
   { path: '/diet', label: '饮食记录', icon: Food },
   { path: '/analysis', label: '营养分析', icon: DataAnalysis },
   { path: '/goals', label: '目标设定', icon: Aim },
+  { path: '/favorites', label: '偏好食物', icon: Star },
   { path: '/profile', label: '个人设置', icon: Setting },
 ]
 

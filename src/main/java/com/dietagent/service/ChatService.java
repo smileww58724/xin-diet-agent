@@ -7,6 +7,7 @@ import com.dietagent.agent.tool.DietAgentTools;
 import com.dietagent.agent.tool.PexelsImageSearchTool;
 import com.dietagent.dto.response.DietRecordResponse;
 import com.dietagent.dto.response.NutritionSummaryResponse;
+import com.dietagent.entity.FavoriteFood;
 import com.dietagent.entity.User;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -45,6 +46,7 @@ public class ChatService {
     private final PexelsImageSearchTool pexelsImageSearchTool;
     private final ChatMemoryStore chatMemoryStore;
     private final AgentUsageService agentUsageService;
+    private final FavoriteFoodService favoriteFoodService;
 
     /** 每用户当前一次流式生成的停止句柄；新请求直接覆盖旧句柄 */
     private final Map<Long, StopHandle> stopHandles = new ConcurrentHashMap<>();
@@ -56,7 +58,8 @@ public class ChatService {
             NutritionAnalysisService nutritionAnalysisService,
             PexelsImageSearchTool pexelsImageSearchTool,
             ChatMemoryStore chatMemoryStore,
-            AgentUsageService agentUsageService) {
+            AgentUsageService agentUsageService,
+            FavoriteFoodService favoriteFoodService) {
         this.deepSeekChatClient = deepSeekChatClient;
         this.userService = userService;
         this.dietRecordService = dietRecordService;
@@ -64,6 +67,7 @@ public class ChatService {
         this.pexelsImageSearchTool = pexelsImageSearchTool;
         this.chatMemoryStore = chatMemoryStore;
         this.agentUsageService = agentUsageService;
+        this.favoriteFoodService = favoriteFoodService;
     }
 
     /** 一次流式生成的停止状态：信号用于取消上游 AI 调用，标记用于收尾时跳过图片搜索 */
@@ -79,7 +83,7 @@ public class ChatService {
         List<Message> history = toSpringAiMessages(chatMemoryStore.loadRecent(userId));
         chatMemoryStore.append(userId, "user", userMessage);
 
-        String systemPrompt = DietAgentPrompt.getSystemPromptWithTools(user) + "\n\n" + buildTodayInfo(userId);
+        String systemPrompt = buildSystemPrompt(userId, user);
 
         // StringBuffer：客户端断开的取消信号来自其他线程，需与流线程的 append 并发安全
         StringBuffer fullResponse = new StringBuffer();
@@ -145,7 +149,7 @@ public class ChatService {
         List<Message> history = toSpringAiMessages(chatMemoryStore.loadRecent(userId));
         chatMemoryStore.append(userId, "user", userMessage);
 
-        String systemPrompt = DietAgentPrompt.getSystemPromptWithTools(user) + "\n\n" + buildTodayInfo(userId);
+        String systemPrompt = buildSystemPrompt(userId, user);
 
         long startNanos = System.nanoTime();
         ChatResponse response = deepSeekChatClient.prompt()
@@ -233,6 +237,45 @@ public class ChatService {
         } catch (Exception e) {
             log.error("图片搜索失败", e);
             return "[图片搜索失败]";
+        }
+    }
+
+    /** 组装 system prompt：基础提示词 + [偏好食物清单] + 今日饮食数据（偏好为空时整段省略） */
+    private String buildSystemPrompt(Long userId, User user) {
+        String prompt = DietAgentPrompt.getSystemPromptWithTools(user);
+        String favorites = buildFavoriteFoods(userId);
+        if (!favorites.isEmpty()) {
+            prompt += "\n\n" + favorites;
+        }
+        return prompt + "\n\n" + buildTodayInfo(userId);
+    }
+
+    /**
+     * 用户偏好食物清单（用户级个性化 RAG）：仅当清单非空时生成注入段，
+     * 指令随清单走——所有食物话题优先围绕偏好展开，避免空清单时的无意义约束
+     */
+    private String buildFavoriteFoods(Long userId) {
+        try {
+            List<FavoriteFood> favorites = favoriteFoodService.list(userId);
+            if (favorites.isEmpty()) {
+                return "";
+            }
+            StringBuilder sb = new StringBuilder("=== 用户偏好食物（用户标记为喜欢吃） ===\n");
+            for (FavoriteFood f : favorites) {
+                sb.append("- ").append(f.getFoodName());
+                if (f.getCategory() != null) sb.append(" [").append(f.getCategory()).append("]");
+                if (f.getCaloriesPer100g() != null) sb.append(" 约").append(f.getCaloriesPer100g()).append("kcal/100g");
+                if (f.getNote() != null) sb.append("（").append(f.getNote()).append("）");
+                sb.append("\n");
+            }
+            sb.append("""
+                    【偏好规则】用户已标记以上食物为喜欢吃：无论推荐食物、生成食谱、分析饮食还是聊到任何食物话题，
+                    都优先围绕这些食物展开；营养不足以满足目标需要补充其他食物时，须说明推荐理由。
+                    不要给出与偏好明显冲突的方案，除非用户主动要求。""");
+            return sb.toString();
+        } catch (Exception e) {
+            log.error("获取偏好食物失败", e);
+            return "";
         }
     }
 

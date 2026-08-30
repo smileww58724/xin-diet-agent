@@ -75,6 +75,13 @@ export const goalsAPI = {
   updateProfile: (data) => api.put('/goals/profile', data),
 }
 
+export const favoritesAPI = {
+  list: () => api.get('/favorites'),
+  add: (data) => api.post('/favorites', data),
+  update: (id, data) => api.put(`/favorites/${id}`, data),
+  remove: (id) => api.delete(`/favorites/${id}`),
+}
+
 export const agentAPI = {
   chat: (message) => api.post('/agent/chat', { message }),
   chatStream: (message, signal) => {
