@@ -1,21 +1,31 @@
 spring:
   application:
     name: diet-agent
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
 
   datasource:
-    url: jdbc:mysql://localhost:3306/diet_agent?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
-    username: root
+    url: jdbc:mysql://${DB_HOST:localhost}:3306/diet_agent?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: ${DB_USERNAME:root}
     password: ${DB_PASSWORD:}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   jpa:
     hibernate:
-      ddl-auto: update
-    show-sql: true
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.MySQLDialect
-        format_sql: true
+      # 表结构统一由 Flyway 管理（db/migration），禁止 Hibernate 擅自改表导致 schema 漂移
+      ddl-auto: none
+
+  flyway:
+    # 兼容 ddl-auto 时代建表的历史库：已有表则打基线（baseline 版本 1），不重跑 V1
+    baseline-on-migrate: true
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+  cache:
+    type: redis
 
   ai:
     openai:
@@ -29,13 +39,16 @@ server:
   port: 8080
 
 jwt:
+  # 启动时校验：必填且至少 32 字节（256 位），否则拒绝启动
   secret: ${JWT_SECRET:}
   expiration: 86400000
 
 pexels:
   api-key: ${PEXELS_API_KEY:}
 
-logging:
-  level:
-    com.dietagent: DEBUG
-    org.springframework.ai: DEBUG
+agent:
+  chat:
+    rate-limit:
+      # 对话接口按用户的令牌桶：容量（突发上限）与每分钟补充速率
+      capacity: 10
+      refill-per-minute: 10

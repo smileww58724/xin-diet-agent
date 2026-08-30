@@ -1,0 +1,5 @@
+# 生产环境：收敛日志，避免刷屏与信息泄露
+logging:
+  level:
+    com.dietagent: INFO
+    org.springframework.ai: WARN
