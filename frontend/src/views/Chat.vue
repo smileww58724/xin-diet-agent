@@ -81,14 +81,16 @@
 </template>
 
 <script setup>
-import { ref, nextTick, shallowRef } from 'vue'
+import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { agentAPI } from '../api'
 import { ElMessage } from 'element-plus'
 import { marked } from 'marked'
+import DOMPurify from 'dompurify'
+import { useSseChat } from '../composables/useSseChat'
 
 const router = useRouter()
 const username = localStorage.getItem('username') || '用户'
+const { loading, sendMessage, stop } = useSseChat()
 
 marked.setOptions({
   breaks: true,
@@ -97,9 +99,7 @@ marked.setOptions({
 
 const messagesRef = ref()
 const inputMessage = ref('')
-const loading = ref(false)
 const thinkingText = ref('正在思考...')
-let abortController = null
 const messages = ref([
   {
     role: 'assistant',
@@ -118,148 +118,77 @@ const scrollToBottom = () => {
   })
 }
 
+const deriveThinkingText = (text) => {
+  if (text.includes('今天') || text.includes('吃了')) return '正在查询饮食记录...'
+  if (text.includes('营养') || text.includes('摄入')) return '正在分析营养数据...'
+  if (text.includes('目标') || text.includes('计划')) return '正在查看目标计划...'
+  if (text.includes('推荐') || text.includes('建议')) return '正在生成建议...'
+  return '正在思考...'
+}
+
 const handleSend = async () => {
   if (!inputMessage.value.trim() || loading.value) return
 
-  const userId = parseInt(localStorage.getItem('userId')) || 1
   const userMessage = inputMessage.value.trim()
-
-  if (userMessage.includes('今天') || userMessage.includes('吃了')) {
-    thinkingText.value = '正在查询饮食记录...'
-  } else if (userMessage.includes('营养') || userMessage.includes('摄入')) {
-    thinkingText.value = '正在分析营养数据...'
-  } else if (userMessage.includes('目标') || userMessage.includes('计划')) {
-    thinkingText.value = '正在查看目标计划...'
-  } else if (userMessage.includes('推荐') || userMessage.includes('建议')) {
-    thinkingText.value = '正在生成建议...'
-  } else {
-    thinkingText.value = '正在思考...'
-  }
+  thinkingText.value = deriveThinkingText(userMessage)
 
   messages.value.push({ role: 'user', content: userMessage })
   messages.value.push({ role: 'assistant', content: '', pending: true })
   const assistantIndex = messages.value.length - 1
   inputMessage.value = ''
-  loading.value = true
-  abortController = new AbortController()
   scrollToBottom()
 
-  try {
-    const response = await agentAPI.chatStream(userId, userMessage, abortController.signal)
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
-    let updateTimer = null
-    let lastContent = ''
-
-    // 防抖更新：每50ms最多更新一次DOM
-    const flushContent = () => {
-      if (updateTimer) {
-        clearTimeout(updateTimer)
-        updateTimer = null
-      }
-      updateTimer = setTimeout(() => {
-        const currentContent = messages.value[assistantIndex]?.content || ''
-        if (currentContent !== lastContent) {
-          lastContent = currentContent
-          scrollToBottom()
-        }
-      }, 50)
-    }
-
-    // SSE 解析：还原被 Spring 拆成多行 data: 的内容（SSE 规范中同一事件的
-    // data 行以换行连接；内容里的换行会被 Spring 序列化成多条 data: 行，
-    // 必须还原，否则 markdown 的换行全部丢失、语法全部裸露）
-    let inDataEvent = false
-    const appendSseLine = (rawLine) => {
-      const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine
-      if (line.startsWith('data:')) {
-        // 注意：Spring 的 SSE 里 data: 之后的空格是内容的一部分，不能去掉
-        const data = line.slice(5)
-        if (data === '[DONE]') return
-
-        if (data.startsWith('[FULL_RESULT]')) {
-          const fullResult = data.slice('[FULL_RESULT]'.length)
-          messages.value[assistantIndex].content = fullResult
-          inDataEvent = false
-          flushContent()
-          return
-        }
-
-        if (inDataEvent) {
-          messages.value[assistantIndex].content += '\n' + data
-        } else {
-          messages.value[assistantIndex].content += data
-        }
-        inDataEvent = true
-        flushContent()
-      } else if (line === '') {
-        // 空行 = 一个 SSE 事件结束
-        inDataEvent = false
-      }
-    }
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      const chunk = decoder.decode(value)
-      buffer += chunk
-
-      // 批量处理完整的 data: 行
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-
-      for (const line of lines) {
-        appendSseLine(line)
-      }
-    }
-
-    // 处理流结束后残留的最后一个事件（防御性，避免丢尾）
-    if (buffer) {
-      const lastLines = buffer.split('\n')
-      buffer = ''
-      for (const line of lastLines) {
-        appendSseLine(line)
-      }
-    }
-
-    // 确保最后的内容被刷新
-    if (updateTimer) {
-      clearTimeout(updateTimer)
-    }
-    messages.value[assistantIndex].pending = false
-    scrollToBottom()
-  } catch (e) {
-    if (e.name === 'AbortError') {
-      ElMessage.info('已停止生成')
-      // 停止时保留已生成的部分，结束流式渲染状态
-      if (messages.value[assistantIndex]) {
-        messages.value[assistantIndex].pending = false
-      }
-    } else {
-      console.error(e)
-      ElMessage.error('发送失败，请重试')
-      messages.value.splice(assistantIndex, 1)
-    }
-  } finally {
-    loading.value = false
-    thinkingText.value = '正在思考...'
-    abortController = null
-    scrollToBottom()
+  // 防抖更新：每50ms最多滚动一次
+  let updateTimer = null
+  const flushContent = () => {
+    if (updateTimer) clearTimeout(updateTimer)
+    updateTimer = setTimeout(scrollToBottom, 50)
   }
+
+  const result = await sendMessage(userMessage, {
+    onDelta: (text) => {
+      if (messages.value[assistantIndex]) {
+        messages.value[assistantIndex].content += text
+        flushContent()
+      }
+    },
+    onFullResult: (fullResult) => {
+      if (messages.value[assistantIndex]) {
+        messages.value[assistantIndex].content = fullResult
+        flushContent()
+      }
+    },
+  })
+  if (updateTimer) clearTimeout(updateTimer)
+
+  if (result.ok) {
+    // 流正常结束
+  } else if (result.aborted) {
+    ElMessage.info('已停止生成')
+  } else if (result.status === 401 || result.status === 403) {
+    // 流式请求走 fetch 不经过 axios 拦截器，认证失效需自行处理
+    localStorage.removeItem('token')
+    localStorage.removeItem('username')
+    localStorage.removeItem('userId')
+    ElMessage.error('登录已过期，请重新登录')
+    router.push('/login')
+    return
+  } else {
+    console.error('流式请求失败', result)
+    ElMessage.error(result.status ? `请求失败（${result.status}）` : '发送失败，请重试')
+    messages.value.splice(assistantIndex, 1)
+    return
+  }
+
+  // 成功与停止：保留内容，结束流式渲染状态
+  if (messages.value[assistantIndex]) {
+    messages.value[assistantIndex].pending = false
+  }
+  scrollToBottom()
 }
 
-const handleStop = async () => {
-  if (abortController) {
-    abortController.abort()
-    // 通知后端停止生成
-    try {
-      const userId = parseInt(localStorage.getItem('userId')) || 1
-      await agentAPI.stopGeneration(userId)
-    } catch (e) {
-      console.error('停止生成失败', e)
-    }
-  }
+const handleStop = () => {
+  stop()
 }
 
 const handleClear = () => {
@@ -290,7 +219,11 @@ const handleCommand = (command) => {
 
 const formatMessage = (text) => {
   if (!text) return ''
-  return marked.parse(text)
+  // 流式阶段把图片标记渲染为占位提示（避免裸标记闪现）；
+  // 结束后内容会被 [FULL_RESULT] 全量替换为图片卡片，不再含标记
+  const display = text.replace(/\[搜索图片:\s*([^\]]*)\]/g, '_🖼️ 正在搜索「$1」的图片…_')
+  // AI 输出与富媒体卡片经 v-html 渲染，必须过净化器防 XSS
+  return DOMPurify.sanitize(marked.parse(display), { ADD_ATTR: ['target'] })
 }
 </script>
 
@@ -303,7 +236,7 @@ const formatMessage = (text) => {
 .sidebar {
   width: 200px;
   background: #fff;
-  border-right: 1px solid #e4e4e4;
+  border-right: 1px solid #e4e4e7;
   display: flex;
   flex-direction: column;
 }

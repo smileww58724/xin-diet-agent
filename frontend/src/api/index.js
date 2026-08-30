@@ -76,21 +76,22 @@ export const goalsAPI = {
 }
 
 export const agentAPI = {
-  chat: (userId, message) => api.post('/agent/chat', { userId, message }),
-  chatStream: (userId, message, signal) => {
+  chat: (message) => api.post('/agent/chat', { message }),
+  chatStream: (message, signal) => {
     const token = localStorage.getItem('token')
     // 走同源 /api 代理，避免跨域问题
+    // userId 不再随请求体传递，后端统一从 Authorization token 解析，防止越权冒用他人身份
     return fetch('/api/agent/chat/stream', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
-      body: JSON.stringify({ userId, message }),
+      body: JSON.stringify({ message }),
       signal,
     })
   },
-  stopGeneration: (userId) => api.post('/agent/chat/stop', { userId }),
+  stopGeneration: () => api.post('/agent/chat/stop'),
   clearMemory: () => api.delete('/agent/memory'),
 }
 
