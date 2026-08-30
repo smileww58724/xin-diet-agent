@@ -1,2 +1,17 @@
-# Project exclude paths
-/target/
+# ---- 构建 ----
+target/
+frontend/node_modules/
+frontend/dist/
+
+# ---- IDE ----
+.idea/
+*.iml
+frontend/.idea/
+frontend/.vscode/
+.vscode/
+
+# ---- 本地环境 / 系统文件 ----
+.env
+*.log
+.DS_Store
+Thumbs.db
