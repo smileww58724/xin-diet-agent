@@ -18,6 +18,14 @@ public class JwtTokenProvider {
     public JwtTokenProvider(
             @Value("${jwt.secret}") String secret,
             @Value("${jwt.expiration}") long expiration) {
+        // 启动即校验，拒绝带病运行：HMAC-SHA256 要求密钥至少 256 位（32 字节）
+        if (secret == null || secret.isBlank() || secret.getBytes(StandardCharsets.UTF_8).length < 32) {
+            throw new IllegalStateException(
+                    "JWT 密钥未配置或不足 32 字节（256 位），请设置环境变量 JWT_SECRET");
+        }
+        if (expiration <= 0) {
+            throw new IllegalStateException("JWT 有效期必须为正数毫秒，请检查 jwt.expiration 配置");
+        }
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.expiration = expiration;
     }
