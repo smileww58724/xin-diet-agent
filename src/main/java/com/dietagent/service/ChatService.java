@@ -2,24 +2,49 @@ package com.dietagent.service;
 
 import com.dietagent.agent.memory.ChatMemory;
 import com.dietagent.agent.prompt.DietAgentPrompt;
+import com.dietagent.agent.tool.DietAgentTools;
 import com.dietagent.agent.tool.PexelsImageSearchTool;
 import com.dietagent.dto.response.DietRecordResponse;
 import com.dietagent.dto.response.NutritionSummaryResponse;
 import com.dietagent.entity.User;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.metadata.Usage;
+import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
+import reactor.core.publisher.SignalType;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Slf4j
 @Service
 public class ChatService {
+
+    /**
+     * 对话记忆缓存的容量上限与闲置过期时间：用户总量不可预估，
+     * 若不淘汰会随注册量无界增长；长期不活跃用户的记忆自动释放。
+     */
+    private static final long MAX_CACHED_USERS = 1000;
+    private static final Duration MEMORY_EXPIRE_AFTER_ACCESS = Duration.ofHours(2);
+
+    /** 图片搜索标记：关键词内不允许出现 ']'，限制长度防止标记异常膨胀 */
+    private static final Pattern IMAGE_MARK = Pattern.compile("\\[搜索图片:\\s*([^\\]]{1,100})\\]");
 
     private final ChatClient deepSeekChatClient;
     private final UserService userService;
@@ -27,10 +52,14 @@ public class ChatService {
     private final NutritionAnalysisService nutritionAnalysisService;
     private final PexelsImageSearchTool pexelsImageSearchTool;
 
-    private final ConcurrentHashMap<Long, ChatMemory> userMemories = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<Long, StringBuilder> pendingResponses = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<Long, Sinks.Many<String>> responseSinks = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<Long, Boolean> stoppedStreams = new ConcurrentHashMap<>();
+    /** 按用户隔离的对话记忆：Caffeine 限量 + 闲置淘汰，防止无界增长 */
+    private final Cache<Long, ChatMemory> userMemories = Caffeine.newBuilder()
+            .maximumSize(MAX_CACHED_USERS)
+            .expireAfterAccess(MEMORY_EXPIRE_AFTER_ACCESS)
+            .build();
+
+    /** 每用户当前一次流式生成的停止句柄；新请求直接覆盖旧句柄 */
+    private final Map<Long, StopHandle> stopHandles = new ConcurrentHashMap<>();
 
     public ChatService(
             ChatClient deepSeekChatClient,
@@ -45,152 +74,170 @@ public class ChatService {
         this.pexelsImageSearchTool = pexelsImageSearchTool;
     }
 
-    public Flux<String> chatStream(Long userId, String userMessage) {
-        // 清除之前的停止标记
-        stoppedStreams.remove(userId);
+    /** 一次流式生成的停止状态：信号用于取消上游 AI 调用，标记用于收尾时跳过图片搜索 */
+    private static final class StopHandle {
+        final Sinks.Many<Boolean> stopSignal = Sinks.many().unicast().onBackpressureBuffer();
+        final AtomicBoolean stopped = new AtomicBoolean(false);
+    }
 
+    public Flux<String> chatStream(Long userId, String userMessage) {
         User user = userService.getUserById(userId);
-        ChatMemory memory = userMemories.computeIfAbsent(userId, ChatMemory::new);
+        ChatMemory memory = memoryOf(userId);
+        // 先取历史快照再写入本轮消息：历史作为独立的按角色 message 传入，
+        // 用户消息只经 .user() 发送一次（此前历史文本里已包含它，重复占用上下文 token）
+        List<Message> history = toSpringAiMessages(memory.snapshot());
         memory.addUserMessage(userMessage);
 
-        String systemPrompt = DietAgentPrompt.getSystemPromptWithTools(user);
-        String fullPrompt = buildFullPrompt(userId, systemPrompt, userMessage, memory);
+        String systemPrompt = DietAgentPrompt.getSystemPromptWithTools(user) + "\n\n" + buildTodayInfo(userId);
 
-        Sinks.Many<String> sink = Sinks.many().multicast().onBackpressureBuffer();
-        responseSinks.put(userId, sink);
-        StringBuilder fullResponse = new StringBuilder();
-        pendingResponses.put(userId, fullResponse);
+        // StringBuffer：客户端断开的取消信号来自其他线程，需与流线程的 append 并发安全
+        StringBuffer fullResponse = new StringBuffer();
+        StopHandle handle = new StopHandle();
+        stopHandles.put(userId, handle);
 
-        // 异步处理 AI 响应
-        deepSeekChatClient.prompt()
-                .system(fullPrompt)
+        // 直接返回 AI 流上的组合 Flux：客户端断开时取消信号沿链路传播，
+        // 上游 DeepSeek 调用立即终止（手动 subscribe + sink 桥接的写法做不到这一点）
+        return deepSeekChatClient.prompt()
+                .system(systemPrompt)
+                .messages(history)
                 .user(userMessage)
+                .tools(new DietAgentTools(userId, userService, dietRecordService, nutritionAnalysisService))
                 .stream()
-                .content()
-                .subscribe(
-                        chunk -> {
-                            fullResponse.append(chunk);
-                            sink.emitNext(chunk, Sinks.EmitFailureHandler.FAIL_FAST);
-                        },
-                        error -> {
-                            log.error("AI 流处理错误", error);
-                            pendingResponses.remove(userId);
-                            responseSinks.remove(userId);
-                            stoppedStreams.remove(userId);
-                            try {
-                                sink.emitError(error, Sinks.EmitFailureHandler.FAIL_FAST);
-                            } catch (Exception ignored) {}
-                        },
-                        () -> {
-                            // 检查是否被用户停止
-                            if (stoppedStreams.containsKey(userId)) {
-                                log.info("流已被用户停止，跳过图片搜索");
-                                memory.addAssistantMessage(fullResponse.toString());
-                                pendingResponses.remove(userId);
-                                responseSinks.remove(userId);
-                                stoppedStreams.remove(userId);
-                                try {
-                                    sink.emitComplete(Sinks.EmitFailureHandler.FAIL_FAST);
-                                } catch (Exception ignored) {}
-                                return;
-                            }
+                .chatResponse()
+                .doOnNext(resp -> logUsage(userId, resp))
+                .map(ChatService::extractText)
+                .filter(text -> !text.isEmpty())
+                // 收到停止信号立即取消上游 AI 调用并正常收尾，不再等模型把剩余内容生成完
+                .takeUntilOther(handle.stopSignal.asFlux())
+                .doOnNext(fullResponse::append)
+                .doOnError(e -> log.error("AI 流处理错误", e))
+                .concatWith(Mono.defer(() -> finishStream(handle, memory, fullResponse)))
+                .doFinally(signal -> {
+                    if (signal == SignalType.CANCEL && !fullResponse.isEmpty()) {
+                        // 客户端直接断开（如关闭页面）：已生成的部分仍写入记忆，保持上下文连续
+                        memory.addAssistantMessage(fullResponse.toString());
+                    }
+                    // 两参 remove：仅当仍是本次请求的句柄时才清理，避免误删新一轮会话的句柄
+                    stopHandles.remove(userId, handle);
+                });
+    }
 
-                            // 流结束时处理图片搜索
-                            String result = fullResponse.toString();
-                            if (result.contains("[搜索图片:")) {
-                                result = processImageSearch(result);
-                                // 发送完整结果替换标记，前端会检测并更新
-                                try {
-                                    sink.emitNext("\n[FULL_RESULT]" + result, Sinks.EmitFailureHandler.FAIL_FAST);
-                                } catch (Exception ignored) {}
-                            }
-
-                            memory.addAssistantMessage(result);
-                            pendingResponses.remove(userId);
-                            responseSinks.remove(userId);
-                            stoppedStreams.remove(userId);
-                            try {
-                                sink.emitComplete(Sinks.EmitFailureHandler.FAIL_FAST);
-                            } catch (Exception ignored) {}
-                        }
-                );
-
-        return sink.asFlux();
+    /** 流正常结束（含被用户停止）后的收尾：写记忆，必要时拦截图片标记做全量替换 */
+    private Mono<String> finishStream(StopHandle handle, ChatMemory memory, StringBuffer fullResponse) {
+        String result = fullResponse.toString();
+        if (!result.isBlank()) {
+            // 记忆中保留原始标记而非替换后的图片 HTML，避免大段 HTML 占用上下文
+            memory.addAssistantMessage(result);
+        }
+        if (handle.stopped.get() || !IMAGE_MARK.matcher(result).find()) {
+            return Mono.empty();
+        }
+        return Mono.just("\n[FULL_RESULT]" + processImageSearch(result));
     }
 
     public void stopGeneration(Long userId) {
-        stoppedStreams.put(userId, true);
+        StopHandle handle = stopHandles.get(userId);
+        if (handle == null) {
+            return;
+        }
+        handle.stopped.set(true);
+        // 触发 takeUntilOther 取消上游 AI 调用；流已结束时此处无人订阅，结果可忽略
+        handle.stopSignal.tryEmitNext(Boolean.TRUE);
         log.info("用户 {} 停止了生成", userId);
     }
 
     public String chat(Long userId, String userMessage) {
         User user = userService.getUserById(userId);
-        ChatMemory memory = userMemories.computeIfAbsent(userId, ChatMemory::new);
+        ChatMemory memory = memoryOf(userId);
+        List<Message> history = toSpringAiMessages(memory.snapshot());
         memory.addUserMessage(userMessage);
 
-        String systemPrompt = DietAgentPrompt.getSystemPromptWithTools(user);
-        String fullPrompt = buildFullPrompt(userId, systemPrompt, userMessage, memory);
+        String systemPrompt = DietAgentPrompt.getSystemPromptWithTools(user) + "\n\n" + buildTodayInfo(userId);
 
-        String response = deepSeekChatClient.prompt()
-                .system(fullPrompt)
+        ChatResponse response = deepSeekChatClient.prompt()
+                .system(systemPrompt)
+                .messages(history)
                 .user(userMessage)
+                .tools(new DietAgentTools(userId, userService, dietRecordService, nutritionAnalysisService))
                 .call()
-                .content();
+                .chatResponse();
+        logUsage(userId, response);
 
-        if (response.contains("[搜索图片:")) {
-            response = processImageSearch(response);
+        String content = extractText(response);
+        if (IMAGE_MARK.matcher(content).find()) {
+            content = processImageSearch(content);
         }
-        memory.addAssistantMessage(response);
-        return response;
+        memory.addAssistantMessage(content);
+        return content;
     }
 
+    private ChatMemory memoryOf(Long userId) {
+        return userMemories.get(userId, ChatMemory::new);
+    }
+
+    /** 历史按角色转换为 Spring AI 消息序列（user/assistant），由框架按对话格式传给模型 */
+    private List<Message> toSpringAiMessages(List<ChatMemory.ChatMessage> history) {
+        return history.stream()
+                .<Message>map(m -> "assistant".equals(m.getRole())
+                        ? new AssistantMessage(m.getContent())
+                        : new UserMessage(m.getContent()))
+                .toList();
+    }
+
+    /** 记录每次调用的 token 用量（流式下仅当供应商在末尾分片携带 usage 时可得） */
+    private static void logUsage(Long userId, ChatResponse response) {
+        if (response == null || response.getMetadata() == null || response.getMetadata().getUsage() == null) {
+            return;
+        }
+        Usage usage = response.getMetadata().getUsage();
+        Integer total = usage.getTotalTokens();
+        if (total == null || total == 0) {
+            return; // 中间分片一般不携带 usage
+        }
+        Integer prompt = usage.getPromptTokens();
+        Integer completion = usage.getCompletionTokens();
+        log.info("AI 用量 userId={} model={} promptTokens={} completionTokens={} totalTokens={}",
+                userId, response.getMetadata().getModel(),
+                prompt != null ? prompt : 0, completion != null ? completion : 0, total);
+    }
+
+    private static String extractText(ChatResponse response) {
+        if (response == null || response.getResult() == null || response.getResult().getOutput() == null) {
+            return "";
+        }
+        String text = response.getResult().getOutput().getText();
+        return text != null ? text : "";
+    }
+
+    /** 处理回答中的全部图片标记（此前只处理第一个，且关键词含 ']' 会截断） */
     private String processImageSearch(String text) {
-        int start = text.indexOf("[搜索图片:");
-        if (start == -1) return text;
-        int end = text.indexOf("]", start);
-        if (end == -1) return text;
+        Matcher matcher = IMAGE_MARK.matcher(text);
+        StringBuilder sb = new StringBuilder();
+        int last = 0;
+        boolean replaced = false;
+        while (matcher.find()) {
+            sb.append(text, last, matcher.start())
+              .append("\n")
+              .append(searchImages(matcher.group(1).trim()));
+            last = matcher.end();
+            replaced = true;
+        }
+        if (!replaced) {
+            return text;
+        }
+        return sb.append(text.substring(last)).toString();
+    }
 
-        String searchQuery = text.substring(start + 6, end).trim();
-        log.info("执行图片搜索: {}", searchQuery);
-
+    private String searchImages(String query) {
+        log.info("执行图片搜索: {}", query);
         try {
             PexelsImageSearchTool.Response result = pexelsImageSearchTool.apply(
-                    new PexelsImageSearchTool.Request(searchQuery, 3));
+                    new PexelsImageSearchTool.Request(query, 3));
             log.info("图片搜索完成，结果长度: {}", result.imageResults().length());
-            return text.substring(0, start) + "\n" + result.imageResults();
+            return result.imageResults();
         } catch (Exception e) {
             log.error("图片搜索失败", e);
-            return text.replace("[搜索图片:" + searchQuery + "]", "\n[图片搜索失败]\n");
-        }
-    }
-
-    private String buildFullPrompt(Long userId, String systemPrompt, String userMessage, ChatMemory memory) {
-        String todayInfo = buildTodayInfo(userId);
-        String userProfile = buildUserProfile(userId);
-        String recentHistory = memory.getConversationHistory();
-        return systemPrompt + "\n\n" + userProfile + "\n\n" + todayInfo + "\n\n对话历史：\n" + recentHistory;
-    }
-
-    private String buildUserProfile(Long userId) {
-        try {
-            User user = userService.getUserById(userId);
-            StringBuilder sb = new StringBuilder();
-            sb.append("=== 用户信息 ===\n用户ID: ").append(user.getId()).append("\n");
-            if (user.getNickname() != null) sb.append("昵称: ").append(user.getNickname()).append("\n");
-            if (user.getHeight() != null) sb.append("身高: ").append(user.getHeight()).append(" cm\n");
-            if (user.getWeight() != null) sb.append("体重: ").append(user.getWeight()).append(" kg\n");
-            if (user.getAge() != null) sb.append("年龄: ").append(user.getAge()).append(" 岁\n");
-            if (user.getGender() != null) sb.append("性别: ").append(user.getGender()).append("\n");
-            if (user.getActivityLevel() != null) sb.append("运动水平: ").append(user.getActivityLevel()).append("\n");
-            if (user.getGoalType() != null) sb.append("目标: ").append(user.getGoalType()).append("\n");
-            if (user.getDailyCalorieGoal() != null) sb.append("每日卡路里目标: ").append(user.getDailyCalorieGoal()).append(" kcal\n");
-            if (user.getProteinGoal() != null) sb.append("蛋白质目标: ").append(user.getProteinGoal()).append(" g\n");
-            if (user.getFatGoal() != null) sb.append("脂肪目标: ").append(user.getFatGoal()).append(" g\n");
-            if (user.getCarbGoal() != null) sb.append("碳水目标: ").append(user.getCarbGoal()).append(" g\n");
-            return sb.toString();
-        } catch (Exception e) {
-            log.error("获取用户信息失败", e);
-            return "用户信息: 获取失败";
+            return "[图片搜索失败]";
         }
     }
 
@@ -231,7 +278,9 @@ public class ChatService {
     }
 
     public void clearMemory(Long userId) {
-        ChatMemory memory = userMemories.get(userId);
-        if (memory != null) memory.clear();
+        ChatMemory memory = userMemories.getIfPresent(userId);
+        if (memory != null) {
+            memory.clear();
+        }
     }
 }

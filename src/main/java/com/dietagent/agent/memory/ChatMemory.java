@@ -39,12 +39,9 @@ public class ChatMemory {
         return new ArrayList<>(messages.subList(start, size));
     }
 
-    public String getConversationHistory() {
-        StringBuilder sb = new StringBuilder();
-        for (ChatMessage msg : messages) {
-            sb.append(msg.getRole()).append(": ").append(msg.getContent()).append("\n");
-        }
-        return sb.toString();
+    /** 当前历史的只读快照，供组装 Spring AI messages 使用，避免暴露内部可变列表 */
+    public List<ChatMessage> snapshot() {
+        return new ArrayList<>(messages);
     }
 
     public void clear() {
