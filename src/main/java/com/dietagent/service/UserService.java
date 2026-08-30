@@ -64,6 +64,20 @@ public class UserService {
                 .orElseThrow(() -> new BusinessException("用户不存在"));
     }
 
+    /**
+     * 目标设定页保存的目标同步到用户画像：
+     * AI 提示词与营养分析读取的是 User 表上的目标，不同步会出现两套口径不一致
+     */
+    public void syncDailyGoals(Long userId, Integer calorieGoal, Integer proteinGoal,
+                               Integer fatGoal, Integer carbGoal) {
+        User user = getUserById(userId);
+        if (calorieGoal != null) user.setDailyCalorieGoal(calorieGoal);
+        if (proteinGoal != null) user.setProteinGoal(proteinGoal);
+        if (fatGoal != null) user.setFatGoal(fatGoal);
+        if (carbGoal != null) user.setCarbGoal(carbGoal);
+        userRepository.save(user);
+    }
+
     public User updateUserProfile(Long userId, User updateData) {
         User user = getUserById(userId);
         if (updateData.getNickname() != null) {

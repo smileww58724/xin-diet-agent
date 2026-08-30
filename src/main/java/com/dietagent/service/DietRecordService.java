@@ -1,11 +1,13 @@
 package com.dietagent.service;
 
+import com.dietagent.config.CacheConfig;
 import com.dietagent.dto.request.DietRecordRequest;
 import com.dietagent.dto.response.DietRecordResponse;
 import com.dietagent.entity.DietRecord;
 import com.dietagent.exception.BusinessException;
 import com.dietagent.repository.DietRecordRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -20,6 +22,7 @@ public class DietRecordService {
 
     private final DietRecordRepository dietRecordRepository;
 
+    @CacheEvict(cacheNames = CacheConfig.NUTRITION_SUMMARY, allEntries = true)
     public DietRecordResponse addRecord(Long userId, DietRecordRequest request) {
         DietRecord record = DietRecord.builder()
                 .userId(userId)
@@ -37,6 +40,7 @@ public class DietRecordService {
         return toResponse(record);
     }
 
+    @CacheEvict(cacheNames = CacheConfig.NUTRITION_SUMMARY, allEntries = true)
     public DietRecordResponse updateRecord(Long userId, Long recordId, DietRecordRequest request) {
         DietRecord record = dietRecordRepository.findById(recordId)
                 .orElseThrow(() -> new BusinessException("记录不存在"));
@@ -58,6 +62,7 @@ public class DietRecordService {
         return toResponse(record);
     }
 
+    @CacheEvict(cacheNames = CacheConfig.NUTRITION_SUMMARY, allEntries = true)
     public void deleteRecord(Long userId, Long recordId) {
         DietRecord record = dietRecordRepository.findById(recordId)
                 .orElseThrow(() -> new BusinessException("记录不存在"));

@@ -18,27 +18,17 @@ public interface DietRecordRepository extends JpaRepository<DietRecord, Long> {
     List<DietRecord> findByUserIdAndMealTimeBetween(
             Long userId, LocalDateTime start, LocalDateTime end);
 
-    @Query("SELECT SUM(d.calories) FROM DietRecord d WHERE d.userId = :userId AND d.mealTime BETWEEN :start AND :end")
-    Integer sumCaloriesByUserIdAndMealTimeBetween(
-            @Param("userId") Long userId,
-            @Param("start") LocalDateTime start,
-            @Param("end") LocalDateTime end);
-
-    @Query("SELECT SUM(d.protein) FROM DietRecord d WHERE d.userId = :userId AND d.mealTime BETWEEN :start AND :end")
-    Double sumProteinByUserIdAndMealTimeBetween(
-            @Param("userId") Long userId,
-            @Param("start") LocalDateTime start,
-            @Param("end") LocalDateTime end);
-
-    @Query("SELECT SUM(d.fat) FROM DietRecord d WHERE d.userId = :userId AND d.mealTime BETWEEN :start AND :end")
-    Double sumFatByUserIdAndMealTimeBetween(
-            @Param("userId") Long userId,
-            @Param("start") LocalDateTime start,
-            @Param("end") LocalDateTime end);
-
-    @Query("SELECT SUM(d.carbohydrate) FROM DietRecord d WHERE d.userId = :userId AND d.mealTime BETWEEN :start AND :end")
-    Double sumCarbohydrateByUserIdAndMealTimeBetween(
-            @Param("userId") Long userId,
-            @Param("start") LocalDateTime start,
-            @Param("end") LocalDateTime end);
+    /**
+     * 单条聚合查询一次取回四项营养汇总（热量/蛋白/脂肪/碳水）。
+     * 此前拆成 4 条 SUM 查询，而每次 AI 对话与日报页面都要触发，合并后减少 3/4 查询开销。
+     * JPQL 纯聚合查询无匹配行时也返回一行全 null，调用方需做空值兜底。
+     */
+    @Query("""
+            SELECT SUM(d.calories), SUM(d.protein), SUM(d.fat), SUM(d.carbohydrate)
+            FROM DietRecord d
+            WHERE d.userId = :userId AND d.mealTime BETWEEN :start AND :end
+            """)
+    Object[] aggregateNutrition(@Param("userId") Long userId,
+                                @Param("start") LocalDateTime start,
+                                @Param("end") LocalDateTime end);
 }

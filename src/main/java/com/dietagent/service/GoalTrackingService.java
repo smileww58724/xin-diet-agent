@@ -14,24 +14,31 @@ import java.util.List;
 public class GoalTrackingService {
 
     private final GoalSettingRepository goalSettingRepository;
+    private final UserService userService;
 
     public GoalSetting setDailyGoal(Long userId, GoalSetting goalSetting) {
         GoalSetting existing = goalSettingRepository
                 .findByUserIdAndGoalDate(userId, goalSetting.getGoalDate())
                 .orElse(null);
 
+        GoalSetting saved;
         if (existing != null) {
             existing.setTargetCalories(goalSetting.getTargetCalories());
             existing.setTargetProtein(goalSetting.getTargetProtein());
             existing.setTargetFat(goalSetting.getTargetFat());
             existing.setTargetCarb(goalSetting.getTargetCarb());
             existing.setAchieved(false);
-            return goalSettingRepository.save(existing);
+            saved = goalSettingRepository.save(existing);
+        } else {
+            goalSetting.setUserId(userId);
+            goalSetting.setAchieved(false);
+            saved = goalSettingRepository.save(goalSetting);
         }
 
-        goalSetting.setUserId(userId);
-        goalSetting.setAchieved(false);
-        return goalSettingRepository.save(goalSetting);
+        // 同步到用户画像，保证 AI 提示词与营养分析读到的目标口径一致
+        userService.syncDailyGoals(userId, saved.getTargetCalories(),
+                saved.getTargetProtein(), saved.getTargetFat(), saved.getTargetCarb());
+        return saved;
     }
 
     public GoalSetting getDailyGoal(Long userId, LocalDate date) {
