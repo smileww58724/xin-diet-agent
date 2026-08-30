@@ -2,6 +2,10 @@
 <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
           xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 http://maven.apache.org/xsd/settings-1.0.0.xsd">
+  <!-- 显式指定本地仓库：全局 settings.xml 误将 localRepository 指到 Maven 安装目录自身
+       （D:\Environment\apache-maven-3.9.7），该目录只读，解析依赖时报"拒绝访问"。
+       用户级 settings（-s 指定的本文件）优先级高于全局配置，可覆盖该错误值。 -->
+  <localRepository>${user.home}/.m2/repository</localRepository>
   <!-- 仅镜像 central 到阿里云；spring-milestones 保持直连（依赖已缓存，不会触发下载） -->
   <mirrors>
     <mirror>
