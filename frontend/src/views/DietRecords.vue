@@ -16,7 +16,7 @@
           :clearable="false"
           style="width: 140px"
         />
-        <el-button type="primary" @click="showAddDialog = true">添加记录</el-button>
+        <el-button type="primary" @click="openAdd">添加记录</el-button>
       </div>
     </div>
 
@@ -41,8 +41,9 @@
         <el-table-column prop="carbohydrate" label="碳水" width="80">
           <template #default="{ row }">{{ row.carbohydrate }}g</template>
         </el-table-column>
-        <el-table-column label="" width="70" align="right">
+        <el-table-column label="操作" width="120" align="right">
           <template #default="{ row }">
+            <el-button size="small" link @click="openEdit(row)">编辑</el-button>
             <el-button type="danger" size="small" link @click="handleDelete(row.id)">删除</el-button>
           </template>
         </el-table-column>
@@ -52,10 +53,10 @@
     <div v-else class="empty-state">
       <h3>{{ mealDateLabel }}还没有记录</h3>
       <p>手动添加，或在 AI 对话里直接说"我吃了什么"帮你记录</p>
-      <el-button type="primary" @click="showAddDialog = true">添加第一条记录</el-button>
+      <el-button type="primary" @click="openAdd">添加第一条记录</el-button>
     </div>
 
-    <el-dialog v-model="showAddDialog" title="添加饮食记录" width="520px">
+    <el-dialog v-model="showAddDialog" :title="editingId ? '编辑饮食记录' : '添加饮食记录'" width="520px">
       <el-form :model="form" label-width="80px">
         <el-form-item label="餐次">
           <el-select v-model="form.mealType" placeholder="请选择" style="width: 100%">
@@ -96,7 +97,7 @@
       </el-form>
       <template #footer>
         <el-button @click="showAddDialog = false">取消</el-button>
-        <el-button type="primary" @click="handleAdd">确定</el-button>
+        <el-button type="primary" @click="handleSubmit">保存</el-button>
       </template>
     </el-dialog>
   </div>
@@ -125,6 +126,8 @@ const localDateTimeStr = (d = new Date()) =>
 const selectedDate = ref(localDateStr())
 const records = ref([])
 const showAddDialog = ref(false)
+// 编辑模式记录当前行 id，null 表示新增
+const editingId = ref(null)
 
 const mealDateLabel = computed(() =>
   selectedDate.value === localDateStr() ? '今天' : selectedDate.value
@@ -141,6 +144,36 @@ const form = reactive({
   mealTime: localDateTimeStr(),
 })
 
+const openAdd = () => {
+  editingId.value = null
+  Object.assign(form, {
+    mealType: 'breakfast',
+    foodName: '',
+    portionSize: '',
+    calories: 0,
+    protein: 0,
+    fat: 0,
+    carbohydrate: 0,
+    mealTime: localDateTimeStr(),
+  })
+  showAddDialog.value = true
+}
+
+const openEdit = (row) => {
+  editingId.value = row.id
+  Object.assign(form, {
+    mealType: row.mealType,
+    foodName: row.foodName,
+    portionSize: row.portionSize,
+    calories: row.calories,
+    protein: row.protein,
+    fat: row.fat,
+    carbohydrate: row.carbohydrate,
+    mealTime: row.mealTime,
+  })
+  showAddDialog.value = true
+}
+
 onMounted(() => {
   loadRecords()
 })
@@ -153,14 +186,19 @@ const loadRecords = async () => {
   }
 }
 
-const handleAdd = async () => {
+const handleSubmit = async () => {
   if (!form.foodName) {
     ElMessage.warning('请输入食物名称')
     return
   }
   try {
-    await dietAPI.addRecord(form)
-    ElMessage.success('添加成功')
+    if (editingId.value) {
+      await dietAPI.updateRecord(editingId.value, form)
+      ElMessage.success('修改成功')
+    } else {
+      await dietAPI.addRecord(form)
+      ElMessage.success('添加成功')
+    }
     showAddDialog.value = false
     loadRecords()
   } catch (e) {
