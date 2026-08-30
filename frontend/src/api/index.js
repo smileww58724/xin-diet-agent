@@ -93,6 +93,7 @@ export const agentAPI = {
   },
   stopGeneration: () => api.post('/agent/chat/stop'),
   clearMemory: () => api.delete('/agent/memory'),
+  usage: () => api.get('/agent/usage'),
 }
 
 export default api

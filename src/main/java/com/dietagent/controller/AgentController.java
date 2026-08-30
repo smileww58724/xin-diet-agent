@@ -2,8 +2,10 @@ package com.dietagent.controller;
 
 import com.dietagent.dto.request.ChatRequest;
 import com.dietagent.dto.response.AgentResponse;
+import com.dietagent.dto.response.UsageStatsResponse;
 import com.dietagent.exception.BusinessException;
 import com.dietagent.ratelimit.ChatRateLimiter;
+import com.dietagent.service.AgentUsageService;
 import com.dietagent.service.ChatService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
@@ -19,6 +21,7 @@ public class AgentController {
 
     private final ChatService chatService;
     private final ChatRateLimiter chatRateLimiter;
+    private final AgentUsageService agentUsageService;
 
     @PostMapping("/chat")
     public ResponseEntity<AgentResponse> chat(
@@ -58,6 +61,12 @@ public class AgentController {
                 .message("对话历史已清除")
                 .type("success")
                 .build());
+    }
+
+    /** 当前用户的 AI 调用用量统计（成本看板数据源） */
+    @GetMapping("/usage")
+    public ResponseEntity<UsageStatsResponse> usage(@AuthenticationPrincipal Long userId) {
+        return ResponseEntity.ok(agentUsageService.stats(userId));
     }
 
     /** AI 调用按 token 计费，进入业务逻辑前先做用户级限流 */

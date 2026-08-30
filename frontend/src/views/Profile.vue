@@ -47,15 +47,37 @@
         </el-form-item>
       </el-form>
     </el-card>
+
+    <el-card class="mt">
+      <template #header>AI 用量统计</template>
+      <div v-if="usage && usage.totalCalls > 0">
+        <el-row :gutter="16">
+          <el-col :span="6"><el-statistic title="对话次数" :value="usage.totalCalls" /></el-col>
+          <el-col :span="6"><el-statistic title="总 tokens" :value="usage.totalTokens" /></el-col>
+          <el-col :span="6"><el-statistic title="提示 tokens" :value="usage.totalPromptTokens" /></el-col>
+          <el-col :span="6"><el-statistic title="生成 tokens" :value="usage.totalCompletionTokens" /></el-col>
+        </el-row>
+        <template v-if="usage.daily && usage.daily.length">
+          <p class="usage-subtitle">近 7 天用量</p>
+          <div v-for="d in usage.daily" :key="d.date" class="usage-row">
+            <span>{{ d.date }}</span>
+            <span>{{ d.calls }} 次</span>
+            <span>{{ d.tokens }} tokens</span>
+          </div>
+        </template>
+      </div>
+      <el-empty v-else description="还没有 AI 对话记录" :image-size="60" />
+    </el-card>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
-import { goalsAPI } from '../api'
+import { goalsAPI, agentAPI } from '../api'
 import { ElMessage } from 'element-plus'
 
 const loading = ref(false)
+const usage = ref(null)
 const form = reactive({
   username: localStorage.getItem('username') || '',
   nickname: '',
@@ -73,6 +95,12 @@ onMounted(async () => {
     Object.assign(form, profile)
   } catch (e) {
     console.error(e)
+  }
+  // 用量统计是旁路数据，加载失败不打扰用户
+  try {
+    usage.value = await agentAPI.usage()
+  } catch (e) {
+    console.error('用量统计加载失败', e)
   }
 })
 
@@ -98,5 +126,18 @@ const handleSave = async () => {
 }
 .mt {
   margin-top: 20px;
+}
+.usage-subtitle {
+  margin: 16px 0 8px;
+  font-weight: 600;
+  color: #333;
+}
+.usage-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid #f0f0f0;
+  color: #666;
+  font-size: 13px;
 }
 </style>

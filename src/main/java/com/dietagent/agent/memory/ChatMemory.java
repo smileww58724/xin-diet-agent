@@ -39,6 +39,15 @@ public class ChatMemory {
         return new ArrayList<>(messages.subList(start, size));
     }
 
+    /** 按角色追加消息（user / assistant），供持久化层回灌使用 */
+    public void addByRole(String role, String content) {
+        if ("assistant".equals(role)) {
+            addAssistantMessage(content);
+        } else {
+            addUserMessage(content);
+        }
+    }
+
     /** 当前历史的只读快照，供组装 Spring AI messages 使用，避免暴露内部可变列表 */
     public List<ChatMessage> snapshot() {
         return new ArrayList<>(messages);
