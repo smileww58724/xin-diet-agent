@@ -18,8 +18,8 @@
           :key="item.path"
           :to="item.path"
           class="nav-item"
+          :class="{ active: route.path === item.path }"
           :title="collapsed ? item.label : undefined"
-          active-class="active"
         >
           <el-icon :size="17"><component :is="item.icon" /></el-icon>
           <span v-if="!collapsed">{{ item.label }}</span>
