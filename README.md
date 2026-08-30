@@ -13,7 +13,8 @@ AI 基于你的真实身体数据与当日饮食给出个性化建议，支持�
 - **对话内图片搜索**：模型输出 `[搜索图片: 关键词]` 标记，服务端调用 Pexels API 生成富媒体卡片并全量替换下发；第三方数据全部 HTML 转义 + 前端 DOMPurify 净化，杜绝 XSS。
 - **多用户隔离与安全**：JWT 无状态认证 + BCrypt；所有数据查询与 AI 工具实例都绑定 token 中的用户身份；对话接口按用户令牌桶限流，保护 API 账单。
 - **营养日报/周报**：单条聚合 SQL 计算四项营养汇总与目标达成度，Redis 60s 热点缓存（连接失败自动降级直查数据库）。
-- **对话记忆**：每用户滑动窗口 20 条，按角色作为标准消息序列传入模型；Caffeine 全局限量 + 闲置淘汰。
+- **对话记忆持久化**：滑动窗口 20 条持久化到 MySQL——重启不丢失、多实例共享；进程内 Caffeine 读穿透缓存，连续多轮对话零查库。
+- **成本可观测**：每次 AI 调用的模型、三类 token 用量与耗时落库，个人设置页展示用量统计看板（`/api/agent/usage`），统计旁路故障不影响对话主链路。
 - **数据库版本化**：Flyway 管理表结构演进，禁止 Hibernate 擅自改表。
 
 ## 架构总览
@@ -99,7 +100,7 @@ mvn -s .mvn-online-settings.xml test
 ```
 ├── src/main/java/com/dietagent
 │   ├── agent/
-│   │   ├── memory/     # 按用户隔离的对话记忆（滑动窗口 + Caffeine 淘汰）
+│   │   ├── memory/     # 对话记忆：MySQL 持久化 + Caffeine 读穿透（滑动窗口 20 条）
 │   │   ├── prompt/     # 系统提示词（画像 + 混合工具策略）
 │   │   └── tool/       # @Tool 数据查询/记录工具集 / Pexels 图片卡片
 │   ├── config/         # Security/JWT、ChatClient、缓存（Redis 降级）、限流
