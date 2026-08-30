@@ -1,5 +1,6 @@
 package com.dietagent.controller;
 
+import com.dietagent.agent.memory.ChatMemory;
 import com.dietagent.dto.request.ChatRequest;
 import com.dietagent.dto.response.AgentResponse;
 import com.dietagent.dto.response.UsageStatsResponse;
@@ -13,6 +14,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/agent")
@@ -61,6 +64,12 @@ public class AgentController {
                 .message("对话历史已清除")
                 .type("success")
                 .build());
+    }
+
+    /** 当前用户的对话历史：前端切页返回时从持久化记忆恢复会话 */
+    @GetMapping("/memory")
+    public ResponseEntity<List<ChatMemory.ChatMessage>> history(@AuthenticationPrincipal Long userId) {
+        return ResponseEntity.ok(chatService.getHistory(userId));
     }
 
     /** 当前用户的 AI 调用用量统计（成本看板数据源） */

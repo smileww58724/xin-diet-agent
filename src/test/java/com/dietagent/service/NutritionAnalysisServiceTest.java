@@ -45,7 +45,7 @@ class NutritionAnalysisServiceTest {
     @DisplayName("无记录时汇总为 0，目标用默认值兜底")
     void emptyRecordsDefaultGoals() {
         when(dietRecordRepository.aggregateNutrition(eq(1L), any(LocalDateTime.class), any(LocalDateTime.class)))
-                .thenReturn(new Object[]{null, null, null, null});
+                .thenReturn(java.util.Collections.singletonList(new Object[]{null, null, null, null}));
         stubUser(null, null, null, null);
 
         NutritionSummaryResponse summary = service.getDailySummary(1L, LocalDate.of(2026, 8, 30));
@@ -65,7 +65,7 @@ class NutritionAnalysisServiceTest {
     void progressCappedAt100() {
         // SUM(Integer) 在 JPQL 中返回 Long，BigDecimal 列返回 BigDecimal
         when(dietRecordRepository.aggregateNutrition(eq(1L), any(LocalDateTime.class), any(LocalDateTime.class)))
-                .thenReturn(new Object[]{5000L, new BigDecimal("300.00"), new BigDecimal("200.00"), new BigDecimal("700.00")});
+                .thenReturn(java.util.Collections.singletonList(new Object[]{5000L, new BigDecimal("300.00"), new BigDecimal("200.00"), new BigDecimal("700.00")}));
         stubUser(2000, 60, 65, 300);
 
         NutritionSummaryResponse summary = service.getDailySummary(1L, LocalDate.of(2026, 8, 30));
@@ -81,7 +81,7 @@ class NutritionAnalysisServiceTest {
     @DisplayName("聚合值经 Number 正确换算（Long→int、BigDecimal→double）")
     void numberConversion() {
         when(dietRecordRepository.aggregateNutrition(eq(1L), any(LocalDateTime.class), any(LocalDateTime.class)))
-                .thenReturn(new Object[]{1500L, new BigDecimal("55.50"), new BigDecimal("32.50"), new BigDecimal("180.00")});
+                .thenReturn(java.util.Collections.singletonList(new Object[]{1500L, new BigDecimal("55.50"), new BigDecimal("32.50"), new BigDecimal("180.00")}));
         stubUser(2000, 60, 65, 300);
 
         NutritionSummaryResponse summary = service.getDailySummary(1L, LocalDate.of(2026, 8, 30));

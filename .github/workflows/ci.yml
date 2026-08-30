@@ -9,6 +9,22 @@ jobs:
   backend:
     name: Backend · mvn test
     runs-on: ubuntu-latest
+    # 聚合查询集成测试（连真实 MySQL 验证结果形态）需要数据库
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: diet_agent
+        ports:
+          - "3306:3306"
+        options: >-
+          --health-cmd="mysqladmin ping -proot"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+    env:
+      DB_PASSWORD: root
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4

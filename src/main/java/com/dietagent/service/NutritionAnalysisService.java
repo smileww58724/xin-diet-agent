@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -38,7 +39,8 @@ public class NutritionAnalysisService {
 
     private NutritionSummaryResponse getSummary(Long userId, LocalDateTime start, LocalDateTime end) {
         // 单条聚合查询替代此前 4 条 SUM：每次 AI 对话与日报页面都会触发，减少 3/4 的查询开销
-        Object[] row = dietRecordRepository.aggregateNutrition(userId, start, end);
+        List<Object[]> rows = dietRecordRepository.aggregateNutrition(userId, start, end);
+        Object[] row = rows != null && !rows.isEmpty() ? rows.get(0) : null;
         Integer totalCalories = toInt(row != null && row.length > 0 ? row[0] : null);
         Double totalProtein = toDouble(row != null && row.length > 1 ? row[1] : null);
         Double totalFat = toDouble(row != null && row.length > 2 ? row[2] : null);

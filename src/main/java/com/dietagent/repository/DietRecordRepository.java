@@ -21,6 +21,8 @@ public interface DietRecordRepository extends JpaRepository<DietRecord, Long> {
     /**
      * 单条聚合查询一次取回四项营养汇总（热量/蛋白/脂肪/碳水）。
      * 此前拆成 4 条 SUM 查询，而每次 AI 对话与日报页面都要触发，合并后减少 3/4 查询开销。
+     * 注意：返回类型必须声明为 List<Object[]>——Spring Data 对 Object[] 返回值会把
+     * 整个结果 List 包装成单元素数组（row[0] 才是数据行），声明 List 才是行列表语义。
      * JPQL 纯聚合查询无匹配行时也返回一行全 null，调用方需做空值兜底。
      */
     @Query("""
@@ -28,7 +30,7 @@ public interface DietRecordRepository extends JpaRepository<DietRecord, Long> {
             FROM DietRecord d
             WHERE d.userId = :userId AND d.mealTime BETWEEN :start AND :end
             """)
-    Object[] aggregateNutrition(@Param("userId") Long userId,
-                                @Param("start") LocalDateTime start,
-                                @Param("end") LocalDateTime end);
+    List<Object[]> aggregateNutrition(@Param("userId") Long userId,
+                                      @Param("start") LocalDateTime start,
+                                      @Param("end") LocalDateTime end);
 }

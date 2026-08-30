@@ -275,4 +275,9 @@ public class ChatService {
     public void clearMemory(Long userId) {
         chatMemoryStore.clear(userId);
     }
+
+    /** 当前用户的持久化对话历史（供前端切页返回时恢复会话） */
+    public List<ChatMemory.ChatMessage> getHistory(Long userId) {
+        return chatMemoryStore.loadRecent(userId);
+    }
 }

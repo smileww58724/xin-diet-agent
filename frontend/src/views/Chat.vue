@@ -81,8 +81,9 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { agentAPI } from '../api'
 import { ElMessage } from 'element-plus'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
@@ -97,15 +98,29 @@ marked.setOptions({
   gfm: true,
 })
 
+const WELCOME = '您好！我是您的 AI 饮食管理助手。我可以帮您：\n1. 分析今日饮食情况\n2. 推荐合适的食物\n3. 解答营养问题\n4. 生成个性化食谱\n5. 直接告诉我吃了什么，帮您记录\n\n请问有什么可以帮到您的？'
+
 const messagesRef = ref()
 const inputMessage = ref('')
 const thinkingText = ref('正在思考...')
 const messages = ref([
   {
     role: 'assistant',
-    content: '您好！我是您的 AI 饮食管理助手。我可以帮您：\n1. 分析今日饮食情况\n2. 推荐合适的食物\n3. 解答营养问题\n4. 生成个性化食谱\n\n请问有什么可以帮到您的？',
+    content: WELCOME,
   },
 ])
+
+// 切页返回时从持久化记忆恢复对话历史（后端按用户隔离存储）
+onMounted(async () => {
+  try {
+    const history = await agentAPI.history()
+    if (Array.isArray(history) && history.length > 0) {
+      messages.value = history.map(m => ({ role: m.role, content: m.content, pending: false }))
+    }
+  } catch (e) {
+    console.error('恢复对话历史失败', e)
+  }
+})
 
 let scrollTimer = null
 const scrollToBottom = () => {
@@ -191,13 +206,19 @@ const handleStop = () => {
   stop()
 }
 
-const handleClear = () => {
+const handleClear = async () => {
   messages.value = [
     {
       role: 'assistant',
       content: '对话已清空。请问有什么可以帮到您？',
     },
   ]
+  // 同步清空后端持久化记忆，否则切页返回历史又会被恢复
+  try {
+    await agentAPI.clearMemory()
+  } catch (e) {
+    console.error('清空服务端对话记忆失败', e)
+  }
 }
 
 const handleLogout = () => {
