@@ -66,10 +66,9 @@ docker compose up --build
 # 1. 数据库：建库 diet_agent 即可，表结构由 Flyway 首次启动自动创建
 mysql -uroot -p -e "CREATE DATABASE IF NOT EXISTS diet_agent DEFAULT CHARSET utf8mb4"
 
-# 2. 后端（密钥通过环境变量注入；Windows 命令行可用 set 或 PowerShell $env:）
-export DEEPSEEK_API_KEY=sk-xxxx
-export JWT_SECRET=$(openssl rand -hex 32)   # 至少 32 字节，启动时会校验
-export DB_PASSWORD=your-mysql-pwd
+# 2. 后端：在项目根目录 .env 中填好 DEEPSEEK_API_KEY / JWT_SECRET
+#    （.env 由 spring.config.import 原生读取，IDEA 与 mvn 启动均生效；
+#      JWT_SECRET 可用 openssl rand -hex 32 生成，至少 32 字节，启动时校验）
 mvn -s .mvn-online-settings.xml spring-boot:run
 
 # 3. 前端
