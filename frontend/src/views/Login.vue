@@ -3,7 +3,7 @@
     <div class="auth-card">
       <div class="brand">
         <span class="brand-logo">🥗</span>
-        <span class="brand-name">轻食 AI</span>
+        <span class="brand-name">膳灵</span>
       </div>
       <h1 class="auth-title">欢迎回来</h1>
       <p class="auth-sub">登录后继续你的饮食管理</p>

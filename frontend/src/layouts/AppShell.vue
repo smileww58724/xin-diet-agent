@@ -5,7 +5,7 @@
       <div class="side-head">
         <div class="brand">
           <span class="brand-logo">🥗</span>
-          <span v-if="!collapsed" class="brand-name">轻食 AI</span>
+          <span v-if="!collapsed" class="brand-name">膳灵</span>
         </div>
         <button class="collapse-btn" :title="collapsed ? '展开' : '收起'" @click="collapsed = !collapsed">
           <el-icon><Expand v-if="collapsed" /><Fold v-else /></el-icon>
