@@ -18,6 +18,16 @@ AI 基于你的真实身体数据与当日饮食给出个性化建议，支持�
 - **成本可观测**：每次 AI 调用的模型、三类 token 用量与耗时落库，个人设置页展示用量统计看板（`/api/agent/usage`），统计旁路故障不影响对话主链路。
 - **数据库版本化**：Flyway 管理表结构演进，禁止 Hibernate 擅自改表。
 
+## 界面预览
+
+| 登录 | AI 对话 |
+|---|---|
+| ![登录](docs/screenshots/01-login.png) | ![AI 对话](docs/screenshots/02-chat.png) |
+| **饮食记录** | **营养分析** |
+| ![饮食记录](docs/screenshots/03-diet.png) | ![营养分析](docs/screenshots/04-analysis.png) |
+| **偏好食物** | **我的** |
+| ![偏好食物](docs/screenshots/05-favorites.png) | ![我的](docs/screenshots/06-profile.png) |
+
 ## 架构总览
 
 ```mermaid
