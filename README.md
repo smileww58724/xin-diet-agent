@@ -22,11 +22,11 @@ AI 基于你的真实身体数据与当日饮食给出个性化建议，支持�
 
 | 登录 | AI 对话 |
 |---|---|
-| ![登录](docs/screenshots/01-login.png) | ![AI 对话](docs/screenshots/02-chat.png) |
+| ![登录](.github/assets/01-login.png) | ![AI 对话](.github/assets/02-chat.png) |
 | **饮食记录** | **营养分析** |
-| ![饮食记录](docs/screenshots/03-diet.png) | ![营养分析](docs/screenshots/04-analysis.png) |
+| ![饮食记录](.github/assets/03-diet.png) | ![营养分析](.github/assets/04-analysis.png) |
 | **偏好食物** | **我的** |
-| ![偏好食物](docs/screenshots/05-favorites.png) | ![我的](docs/screenshots/06-profile.png) |
+| ![偏好食物](.github/assets/05-favorites.png) | ![我的](.github/assets/06-profile.png) |
 
 ## 架构总览
 
@@ -123,15 +123,4 @@ mvn -s .mvn-online-settings.xml test
 │   ├── composables/useSseChat.js      # SSE 增量解析（与 UI 解耦、可复用）
 │   └── views/                          # 对话 / 记录 / 分析 / 目标 / 设置
 ├── Dockerfile · frontend/Dockerfile · docker-compose.yml
-└── 项目经历.md / 项目难点.md            # 设计取舍与难点复盘
 ```
-
-## 设计取舍速览（详细版见 项目难点.md）
-
-| 决策 | 取舍 |
-|---|---|
-| 停止生成 = 取消上游调用 | `takeUntilOther` 挂接停止信号 + Reactor 取消传播，客户端断开同样立即终止，不再空烧 API 费用；已生成部分照常写入记忆 |
-| 今日数据预注入 + 历史走工具 | 高频问题零工具往返、低延迟；历史日期由模型按需调用 `@Tool`，解决早期方案只能感知"今天"的局限 |
-| 图片搜索保留标记协议而非工具 | 工具结果需回灌模型再生成（token 浪费 + 内容可能被改写）；标记协议由服务端确定性替换，零 token、零失真 |
-| Redis 缓存 + 降级 errorHandler | 缓存纯做优化层，连接失败记日志直查数据库，部署环境没有 Redis 也能跑 |
-| AI 工具请求级绑定 userId | 工具实例按请求构造，模型只能查当前登录用户的数据，从接口层杜绝越权 |

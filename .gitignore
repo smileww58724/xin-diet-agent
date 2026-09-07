@@ -15,3 +15,8 @@ frontend/.vscode/
 *.log
 .DS_Store
 Thumbs.db
+
+# ---- 个人文档（不上传）----
+docs/
+项目经历.md
+项目难点.md
