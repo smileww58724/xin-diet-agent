@@ -95,10 +95,6 @@ mvn -s .mvn-online-settings.xml test
 
 覆盖：JWT 签发/解析/过期/篡改/弱密钥拒绝、对话记忆 FIFO 截断、营养汇总聚合换算与进度封顶、AI 工具日期解析兜底。
 
-## 安卓客户端
-
-原生 Android 客户端（Kotlin + Jetpack Compose），覆盖全部功能（AI 流式对话 / 饮食记录 / 营养分析 / 偏好食物 / 目标与资料 / 用量统计），详见 [android/README_android.md](android/README_android.md)。
-
 ## 项目结构
 
 ```
